@@ -1905,7 +1905,11 @@ impl QueuePair {
             sg_list: local.as_ptr() as *mut ffi::ibv_sge,
             num_sge: local.len() as i32,
             opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
+            send_flags: if signaled {
+                ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
+            } else {
+                0
+            },
             wr: Default::default(),
             qp_type: Default::default(),
             __bindgen_anon_1: Default::default(),
@@ -2016,6 +2020,7 @@ impl QueuePair {
         remote: RemoteMemorySlice,
         wr_id: u64,
         imm_data: Option<u32>,
+        signaled: bool,
     ) -> io::Result<()> {
         let opcode = if imm_data.is_some() {
             ffi::ibv_wr_opcode::IBV_WR_RDMA_WRITE_WITH_IMM
@@ -2023,7 +2028,7 @@ impl QueuePair {
             ffi::ibv_wr_opcode::IBV_WR_RDMA_WRITE
         };
 
-        self._post_one_sided(local, remote, wr_id, opcode, imm_data)
+        self._post_one_sided(local, remote, wr_id, opcode, imm_data, signaled)
     }
 
     #[inline]
@@ -2034,9 +2039,10 @@ impl QueuePair {
         local: &[LocalMemorySlice],
         remote: RemoteMemorySlice,
         wr_id: u64,
+        signaled: bool,
     ) -> io::Result<()> {
         let opcode = ffi::ibv_wr_opcode::IBV_WR_RDMA_READ;
-        self._post_one_sided(local, remote, wr_id, opcode, None)
+        self._post_one_sided(local, remote, wr_id, opcode, None, signaled)
     }
 
     // internal function to do one sided communication
@@ -2047,6 +2053,7 @@ impl QueuePair {
         wr_id: u64,
         opcode: ffi::ibv_wr_opcode,
         imm_data: Option<u32>,
+        signaled: bool,
     ) -> io::Result<()> {
         let anon_1 = if let Some(imm_data) = imm_data {
             ffi::ibv_send_wr__bindgen_ty_1 {
