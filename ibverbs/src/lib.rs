@@ -1905,11 +1905,7 @@ impl QueuePair {
             sg_list: local.as_ptr() as *mut ffi::ibv_sge,
             num_sge: local.len() as i32,
             opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: if signaled {
-                ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
-            } else {
-                0
-            },
+            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
             wr: Default::default(),
             qp_type: Default::default(),
             __bindgen_anon_1: Default::default(),
@@ -2069,7 +2065,11 @@ impl QueuePair {
             sg_list: local.as_ptr() as *mut ffi::ibv_sge,
             num_sge: local.len() as i32,
             opcode,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
+            send_flags: if signaled {
+                ffi::ibv_send_flags::IBV_SEND_SIGNALED.0
+            } else {
+                0
+            },
             wr: ffi::ibv_send_wr__bindgen_ty_2 {
                 rdma: ffi::ibv_send_wr__bindgen_ty_2__bindgen_ty_1 {
                     remote_addr: remote.addr,
