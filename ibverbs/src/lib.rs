@@ -2086,7 +2086,7 @@ impl QueuePair {
             wrs[i] = ffi::ibv_send_wr {
                 wr_id: wr_ids[i],
                 next: if i < length - 1 {
-                    unsafe { pointer.add(i + 1) }
+                    unsafe { pointer.add(i + 1) as *mut _ }
                 } else {
                     ptr::null::<ffi::ibv_send_wr>() as *mut _
                 },
