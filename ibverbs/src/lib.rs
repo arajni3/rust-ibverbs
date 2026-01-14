@@ -2071,7 +2071,7 @@ impl QueuePair {
         let mut wrs: [ffi::ibv_send_wr; LIMIT] = std::array::from_fn(|_| ffi::ibv_send_wr {
             wr_id: 0,
             next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
-            sg_list: ptr::null() as *mut ffi::ibv_sge,
+            sg_list: ptr::null::<ffi::ibv_sge>() as *mut ffi::ibv_sge,
             num_sge: 0,
             opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
             send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
