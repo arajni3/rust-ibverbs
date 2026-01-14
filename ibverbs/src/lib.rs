@@ -1635,6 +1635,15 @@ impl RemoteMemorySlice {
         }
     }
 }
+impl Default for RemoteMemorySlice {
+    fn default() -> Self {
+        Self {
+            addr: 0,
+            len: 0,
+            rkey: 0,
+        }
+    }
+}
 
 /// A key that authorizes direct memory access to a memory region.
 #[derive(Debug, Clone, Copy)]
@@ -1863,6 +1872,23 @@ pub struct QueuePair {
     qp: *mut ffi::ibv_qp,
 }
 
+impl Default for ffi::ibv_send_wr {
+    fn default() -> Self {
+        Self {
+            wr_id: 0,
+            next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
+            sg_list: ptr::null() as *mut ffi::ibv_sge,
+            num_sge: 0,
+            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
+            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
+            wr: Default::default(),
+            qp_type: Default::default(),
+            __bindgen_anon_1: Default::default(),
+            __bindgen_anon_2: Default::default(),
+        }
+    }
+}
+
 unsafe impl Send for QueuePair {}
 unsafe impl Sync for QueuePair {}
 
@@ -2037,6 +2063,66 @@ impl QueuePair {
     ) -> io::Result<()> {
         let opcode = ffi::ibv_wr_opcode::IBV_WR_RDMA_READ;
         self._post_one_sided(local, remote, wr_id, opcode, None)
+    }
+
+    /// Length must be < LIMIT. Returns the first index of post failure.
+    pub fn post_read_doorbell<const LIMIT: usize>(
+        &mut self,
+        length: usize,
+        locals: &[LocalMemorySlice; LIMIT],
+        remotes: &[RemoteMemorySlice; LIMIT],
+        wr_ids: &[u64; LIMIT],
+    ) -> io::Result<(), usize> {
+        self._post_one_sided_read_doorbell(length, locals, remotes, wr_ids)
+    }
+
+    fn _post_one_sided_read_doorbell<const LIMIT: usize>(
+        &mut self,
+        length: usize,
+        locals: &[LocalMemorySlice; LIMIT],
+        remotes: &[RemoteMemorySlice; LIMIT],
+        wr_ids: &[u64; LIMIT],
+    ) -> io::Result<(), usize> {
+        let opcode = ffi::ibv_wr_opcode::IBV_WR_RDMA_READ;
+        let anon_1 = Default::default();
+        let mut wrs = [ffi::ibv_send_wr::default(); LIMIT];
+
+        let pointer = wrs.as_ptr();
+        for i in 0..length {
+            wrs[i] = ffi::ibv_send_wr {
+                wr_id: wr_ids[i],
+                next: if i < length - 1 {
+                    unsafe { pointer.add(i + 1) }
+                } else {
+                    ptr::null::<ffi::ibv_send_wr>() as *mut _
+                },
+                sg_list: &locals[i] as *const LocalMemorySlice as *mut ffi::ibv_sge,
+                num_sge: 1,
+                opcode,
+                send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
+                wr: ffi::ibv_send_wr__bindgen_ty_2 {
+                    rdma: ffi::ibv_send_wr__bindgen_ty_2__bindgen_ty_1 {
+                        remote_addr: remotes[i].addr,
+                        rkey: remotes[i].rkey,
+                    },
+                },
+                qp_type: Default::default(),
+                __bindgen_anon_1: anon_1,
+                __bindgen_anon_2: Default::default(),
+            };
+        }
+        let mut bad_wr: *mut ffi::ibv_send_wr = ptr::null::<ffi::ibv_send_wr>() as *mut _;
+        let ctx = unsafe { *self.qp }.context;
+        let ops = &mut unsafe { *ctx }.ops;
+        let errno = unsafe {
+            ops.post_send.as_mut().unwrap()(self.qp, &mut wr as *mut _, &mut bad_wr as *mut _)
+        };
+        if errno != 0 {
+            let bad_idx = unsafe { bad_wr.offset_from(pointer) };
+            Err(io::Error::from_raw_os_error(errno))
+        } else {
+            Ok(())
+        }
     }
 
     // internal function to do one sided communication
