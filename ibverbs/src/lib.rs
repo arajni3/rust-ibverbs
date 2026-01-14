@@ -1872,23 +1872,6 @@ pub struct QueuePair {
     qp: *mut ffi::ibv_qp,
 }
 
-impl Default for ffi::ibv_send_wr {
-    fn default() -> Self {
-        Self {
-            wr_id: 0,
-            next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
-            sg_list: ptr::null() as *mut ffi::ibv_sge,
-            num_sge: 0,
-            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
-            wr: Default::default(),
-            qp_type: Default::default(),
-            __bindgen_anon_1: Default::default(),
-            __bindgen_anon_2: Default::default(),
-        }
-    }
-}
-
 unsafe impl Send for QueuePair {}
 unsafe impl Sync for QueuePair {}
 
@@ -2072,7 +2055,7 @@ impl QueuePair {
         locals: &[LocalMemorySlice; LIMIT],
         remotes: &[RemoteMemorySlice; LIMIT],
         wr_ids: &[u64; LIMIT],
-    ) -> io::Result<(), usize> {
+    ) -> Option<usize> {
         self._post_one_sided_read_doorbell(length, locals, remotes, wr_ids)
     }
 
@@ -2082,10 +2065,21 @@ impl QueuePair {
         locals: &[LocalMemorySlice; LIMIT],
         remotes: &[RemoteMemorySlice; LIMIT],
         wr_ids: &[u64; LIMIT],
-    ) -> io::Result<(), usize> {
+    ) -> Option<usize> {
         let opcode = ffi::ibv_wr_opcode::IBV_WR_RDMA_READ;
         let anon_1 = Default::default();
-        let mut wrs = [ffi::ibv_send_wr::default(); LIMIT];
+        let mut wrs: [ffi::ibv_send_wr; LIMIT] = std::array::from_fn(|_| ffi::ibv_send_wr {
+            wr_id: 0,
+            next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
+            sg_list: ptr::null() as *mut ffi::ibv_sge,
+            num_sge: 0,
+            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
+            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
+            wr: Default::default(),
+            qp_type: Default::default(),
+            __bindgen_anon_1: Default::default(),
+            __bindgen_anon_2: Default::default(),
+        });
 
         let pointer = wrs.as_ptr();
         for i in 0..length {
@@ -2115,13 +2109,13 @@ impl QueuePair {
         let ctx = unsafe { *self.qp }.context;
         let ops = &mut unsafe { *ctx }.ops;
         let errno = unsafe {
-            ops.post_send.as_mut().unwrap()(self.qp, &mut wr as *mut _, &mut bad_wr as *mut _)
+            ops.post_send.as_mut().unwrap()(self.qp, wrs.as_mut_ptr(), &mut bad_wr as *mut _)
         };
         if errno != 0 {
             let bad_idx = unsafe { bad_wr.offset_from(pointer) };
-            Err(io::Error::from_raw_os_error(errno))
+            Some(bad_idx as usize)
         } else {
-            Ok(())
+            None
         }
     }
 
