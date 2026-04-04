@@ -2084,6 +2084,7 @@ impl QueuePair {
         self._post_one_sided(local, remote, wr_id, opcode, None)
     }
 
+    #[inline]
     /// Length must be < LIMIT. Returns the first index of post failure.
     pub fn post_read_doorbell<const LIMIT: usize>(
         &mut self,
