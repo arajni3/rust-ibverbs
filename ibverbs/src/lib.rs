@@ -68,6 +68,7 @@
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::io;
+use std::mem::MaybeUninit;
 use std::ops::RangeBounds;
 use std::os::fd::BorrowedFd;
 use std::os::raw::c_void;
@@ -1671,15 +1672,6 @@ impl RemoteMemorySlice {
         }
     }
 }
-impl Default for RemoteMemorySlice {
-    fn default() -> Self {
-        Self {
-            addr: 0,
-            len: 0,
-            rkey: 0,
-        }
-    }
-}
 
 /// A key that authorizes direct memory access to a memory region.
 #[derive(Debug, Clone, Copy)]
@@ -2105,22 +2097,13 @@ impl QueuePair {
     ) -> Option<usize> {
         let opcode = ffi::ibv_wr_opcode::IBV_WR_RDMA_READ;
         let anon_1 = Default::default();
-        let mut wrs: [ffi::ibv_send_wr; LIMIT] = std::array::from_fn(|_| ffi::ibv_send_wr {
-            wr_id: 0,
-            next: ptr::null::<ffi::ibv_send_wr>() as *mut _,
-            sg_list: ptr::null::<ffi::ibv_sge>() as *mut ffi::ibv_sge,
-            num_sge: 0,
-            opcode: ffi::ibv_wr_opcode::IBV_WR_SEND,
-            send_flags: ffi::ibv_send_flags::IBV_SEND_SIGNALED.0,
-            wr: Default::default(),
-            qp_type: Default::default(),
-            __bindgen_anon_1: Default::default(),
-            __bindgen_anon_2: Default::default(),
-        });
 
-        let pointer = wrs.as_ptr();
+        let mut wrs: [MaybeUninit<ffi::ibv_send_wr>; LIMIT] =
+            unsafe { MaybeUninit::uninit().assume_init() };
+
+        let pointer = wrs.as_ptr() as *const ffi::ibv_send_wr;
         for i in 0..length {
-            wrs[i] = ffi::ibv_send_wr {
+            wrs[i].write(ffi::ibv_send_wr {
                 wr_id: wr_ids[i],
                 next: if i < length - 1 {
                     unsafe { pointer.add(i + 1) as *mut _ }
@@ -2140,13 +2123,15 @@ impl QueuePair {
                 qp_type: Default::default(),
                 __bindgen_anon_1: anon_1,
                 __bindgen_anon_2: Default::default(),
-            };
+            });
         }
+
         let mut bad_wr: *mut ffi::ibv_send_wr = ptr::null::<ffi::ibv_send_wr>() as *mut _;
         let ctx = unsafe { *self.qp }.context;
         let ops = &mut unsafe { *ctx }.ops;
+        // Safety: wrs[0] is initialized and points to a linked list of length initialized elements.
         let errno = unsafe {
-            ops.post_send.as_mut().unwrap()(self.qp, wrs.as_mut_ptr(), &mut bad_wr as *mut _)
+            ops.post_send.as_mut().unwrap()(self.qp, wrs[0].as_mut_ptr(), &mut bad_wr as *mut _)
         };
         if errno != 0 {
             let bad_idx = unsafe { bad_wr.offset_from(pointer) };
