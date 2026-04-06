@@ -2129,7 +2129,7 @@ impl QueuePair {
         let mut bad_wr: *mut ffi::ibv_send_wr = ptr::null::<ffi::ibv_send_wr>() as *mut _;
         let ctx = unsafe { *self.qp }.context;
         let ops = &mut unsafe { *ctx }.ops;
-        // Safety: wrs[0] is initialized and points to a linked list of length initialized elements.
+        // SAFETY: wrs[0] is initialized and points to a linked list of length initialized elements.
         let errno = unsafe {
             ops.post_send.as_mut().unwrap()(self.qp, wrs[0].as_mut_ptr(), &mut bad_wr as *mut _)
         };
